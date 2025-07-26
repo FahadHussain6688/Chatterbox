@@ -52,4 +52,4 @@ ChatterBox is a real-time chat web application built with Django, Django Channel
 
 ## License
 
-This project is licensed under
+This project is licensed under the MIT License.
