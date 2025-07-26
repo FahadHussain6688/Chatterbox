@@ -1,0 +1,114 @@
+{# {% extends "base.html" %} #}
+{# {% block content %} #}
+<!-- WhatsApp-style chat layout: sidebar for users, main area for messages -->
+<div id="dashboard-chats-section" class="fixed inset-0 flex bg-gray-100 z-10" style="max-width:100vw; max-height:100vh;">
+  <!-- Sidebar: User list -->
+  <div class="w-full sm:w-1/3 md:w-1/4 lg:w-1/5 xl:w-1/6 bg-white border-r h-full overflow-y-auto flex-shrink-0">
+    <div class="p-4 font-bold text-lg border-b">Users</div>
+    <ul id="user-list" class="divide-y">
+      {% for u in users %}
+        <li class="cursor-pointer hover:bg-gray-100 px-4 py-3 {% if u.username == room_name %}bg-blue-50{% endif %}">
+          <a href="/chat/{{ u.username }}/" style="display:inline-block;width:100%;height:100%;color:inherit;text-decoration:none;">
+            <span class="text-blue-700">{{ u.username }}</span>
+          </a>
+        </li>
+      {% empty %}
+        <li class="px-4 py-3 text-gray-400">No users found.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Main chat area -->
+  <div class="flex-1 flex flex-col h-full">
+    <div id="chat-header" class="p-4 border-b bg-white font-semibold text-lg h-16 flex items-center">
+      <span id="chat-header-username" class="text-pink-600">{{ room_name }}</span>
+    </div>
+    <div id="chat-log" class="flex-1 overflow-y-auto p-4 bg-gray-50"></div>
+    <div id="typing-indicator" class="text-gray-500 italic hidden px-4 py-2">Typing...</div>
+    <div class="flex items-center gap-2 p-4 border-t bg-white">
+      <input id="chat-message-input" type="text" placeholder="Type your message..." class="border rounded px-2 py-1 flex-1">
+      <button id="chat-message-submit" class="bg-green-500 text-white px-4 py-1 rounded">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pass previous messages from backend to JS -->
+<script id="messages-data" type="application/json">{{ messages|json_script:"messages-data" }}</script>
+
+<!-- Chat logic -->
+<script>
+  const chatId = "{{ chat_id|default:'' }}";
+  const userName = "{{ request.user.username|escapejs }}";
+  const chatSocket = chatId ? new WebSocket(
+    (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/chat/' + chatId + '/'
+  ) : null;
+
+  const messageInput = document.querySelector('#chat-message-input');
+  const sendBtn = document.querySelector('#chat-message-submit');
+  const chatLog = document.querySelector('#chat-log');
+  const typingIndicator = document.getElementById('typing-indicator');
+
+  // Render previous messages
+  const messages = JSON.parse(document.getElementById('messages-data').textContent);
+  if (messages && messages.length) {
+    chatLog.innerHTML = messages.map(msg => {
+      const isMe = msg.sender__username === userName;
+      return `<div class='my-2 flex ${isMe ? 'justify-end' : 'justify-start'}'>
+        <span class='inline-block ${isMe ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-800'} rounded px-3 py-1 max-w-xs break-words'>
+          <b class='text-xs font-normal'>${msg.sender__username}</b><br>${msg.content}
+        </span>
+      </div>`;
+    }).join('');
+    chatLog.scrollTop = chatLog.scrollHeight;
+  } else {
+    chatLog.innerHTML = '<div class="text-gray-400 text-center mt-8">No messages yet. Start the conversation!</div>';
+  }
+
+  // WebSocket handlers
+  if (chatSocket) {
+    chatSocket.onmessage = function(e) {
+      const data = JSON.parse(e.data);
+      if (data.type === 'chat') {
+        const isMe = data.username === userName;
+        const message = `<div class='my-2 flex ${isMe ? 'justify-end' : 'justify-start'}'>
+          <span class='inline-block ${isMe ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-800'} rounded px-3 py-1 max-w-xs break-words'>
+            <b class='text-xs font-normal'>${data.username}</b><br>${data.message}
+          </span>
+        </div>`;
+        chatLog.innerHTML += message;
+        chatLog.scrollTop = chatLog.scrollHeight;
+      } else if (data.type === 'typing') {
+        typingIndicator.classList.remove('hidden');
+        setTimeout(() => typingIndicator.classList.add('hidden'), 1000);
+      }
+    };
+
+    chatSocket.onclose = function(e) {
+      console.error('WebSocket closed unexpectedly');
+    };
+  }
+
+  // Send message function
+  function sendMessage() {
+    const message = messageInput.value.trim();
+    if (chatSocket && message) {
+      chatSocket.send(JSON.stringify({ message }));
+      messageInput.value = '';
+      messageInput.focus();
+    }
+  }
+
+  // Send on button click
+  sendBtn.onclick = sendMessage;
+
+  // Send on Enter key (prevent Shift+Enter from triggering)
+  messageInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); // prevent newline
+      sendBtn.click();
+    } else if (chatSocket && messageInput.value.trim() !== '') {
+      chatSocket.send(JSON.stringify({ type: 'typing' }));
+    }
+  });
+</script>
+{# {% endblock %} #}

@@ -1,0 +1,880 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div id="dashboard-chats-section" class="fixed inset-0 flex bg-gray-100 z-10" style="max-width:100vw; max-height:100vh;">
+  <!-- Sidebar Navigation -->
+  <div class="w-16 bg-white border-r h-full flex flex-col items-center py-4 flex-shrink-0">
+    <button class="dashboard-nav-btn mb-6 p-2 rounded-lg hover:bg-gray-100 {% if not request.GET.section %}bg-gray-100{% endif %}" data-section="chat">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+    </button>
+    <button class="dashboard-nav-btn mb-6 p-2 rounded-lg hover:bg-gray-100 {% if request.GET.section == 'profile' %}bg-gray-100{% endif %}" data-section="profile">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+      </svg>
+    </button>
+    <button class="dashboard-nav-btn mb-6 p-2 rounded-lg hover:bg-gray-100 {% if request.GET.section == 'status' %}bg-gray-100{% endif %}" data-section="status">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Chat Section -->
+  <div id="chat-section" class="flex-1 flex h-full">
+    <!-- Chat list -->
+    <div class="w-64 bg-white border-r h-full overflow-y-auto flex-shrink-0">
+      <div class="p-4 border-b">
+        <h2 class="font-bold text-lg">Messages</h2>
+      </div>
+      <ul id="chat-list" class="divide-y">
+        {% for chat in chats %}
+          {% with chat.participants.all as participants %}
+            {% for participant in participants %}
+              {% if participant != user %}
+                <li id="chat-li-{{ chat.id }}" class="cursor-pointer hover:bg-gray-100 px-4 py-3"
+                    data-chat-id="{{ chat.id }}" data-username="{{ participant.username|escapejs }}">
+                  <div class="flex justify-between items-start">
+                    <span class="font-medium">{{ participant.username }}</span>
+                    <span class="text-xs text-gray-500">{{ chat.last_message.timestamp|timesince }} ago</span>
+                  </div>
+                  <div class="flex items-center mt-1">
+                    <span class="text-sm text-gray-600 truncate">
+                      {% if chat.last_message %}
+                        {{ chat.last_message.content|truncatechars:30 }}
+                      {% else %}
+                        No messages yet
+                      {% endif %}
+                    </span>
+                    <span class="message-badge hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-2"></span>
+                  </div>
+                </li>
+              {% endif %}
+            {% endfor %}
+          {% endwith %}
+        {% empty %}
+          <li class="px-4 py-3 text-gray-400">No chats found.</li>
+        {% endfor %}
+      </ul>
+      <div class="p-4 border-t">
+        <input type="text" id="new-chat-username" placeholder="Enter username..." class="border rounded px-3 py-2 w-full text-sm">
+        <button onclick="createChat()" class="bg-blue-500 text-white px-3 py-2 rounded mt-2 w-full text-sm">Create New Chat</button>
+        <span id="new-chat-error" class="text-red-600 block mt-1 text-sm"></span>
+      </div>
+    </div>
+
+    <!-- Chat messages area -->
+    <div class="flex-1 flex flex-col h-full">
+      <div id="chat-header" class="p-4 border-b bg-white font-semibold text-lg h-16 flex items-center justify-between">
+        <div class="flex items-center">
+          <span id="chat-header-username"></span>
+        </div>
+        <div id="chat-menu-wrapper" class="relative hidden">
+          <button id="chat-menu-btn" class="p-1 rounded-full hover:bg-gray-200 focus:outline-none">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+            </svg>
+          </button>
+          <div id="chat-menu-dropdown" class="absolute right-0 mt-2 w-32 bg-white border rounded shadow-lg z-20 hidden">
+            <button id="delete-chat-btn" class="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100">Delete Chat</button>
+          </div>
+        </div>
+      </div>
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 bg-gray-50">
+        <div class="text-gray-400 text-center mt-8">Select a chat to start messaging.</div>
+      </div>
+      <div id="typing-indicator" class="text-gray-500 italic px-4 py-2 hidden"></div>
+      <div id="send-message-section" class="flex items-center gap-2 p-4 border-t bg-white hidden">
+        <input type="text" id="message-input" placeholder="Type a message..." class="border rounded px-3 py-2 flex-1">
+        <button id="send-btn" class="bg-green-500 text-white px-4 py-2 rounded">Send</button>
+      </div>
+    </div>
+
+    <!-- Active users list -->
+    <div class="w-64 bg-white border-l h-full overflow-y-auto flex-shrink-0 p-4">
+      <div class="font-semibold text-lg mb-4">All Users</div>
+      <ul id="active-users-list" class="space-y-3">
+        {% for u in all_users %}
+          <li class="flex items-center">
+            <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-3">
+              <span class="text-xs font-medium">{{ u.username|slice:":1"|upper }}</span>
+            </div>
+            <div class="flex-1">
+              <div class="font-medium">{{ u.username }}</div>
+            </div>
+            <span id="user-status-{{ u.id }}" 
+                  class="user-status-dot w-2 h-2 rounded-full {% if u.is_online %}bg-green-500{% else %}bg-gray-400{% endif %}"
+                  data-user-id="{{ u.id }}"></span>
+          </li>
+        {% empty %}
+          <li class="text-gray-500">No users found.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- Profile section -->
+  <div id="profile-section" class="flex-1 h-full overflow-y-auto bg-white hidden">
+    <div class="p-6 max-w-2xl mx-auto">
+      <div class="flex items-start space-x-6 mb-8">
+        <!-- Profile Picture -->
+        <div class="shrink-0">
+          <img src="{% if profile.profile_picture %}{{ profile.profile_picture.url }}{% else %}/static/default-avatar.png{% endif %}" 
+               class="w-20 h-20 rounded-full object-cover border-2 border-gray-300">
+        </div>
+        
+        <!-- User Info -->
+        <div class="flex-1">
+          <h1 class="text-2xl font-semibold">
+            {{ user.profile.display_name|default:user.username }}
+            {% if user.profile.pronouns %}
+              <span class="text-sm text-gray-500 ml-2">{{ user.profile.get_pronouns_display }}</span>
+            {% endif %}
+          </h1>
+          
+          {% if user.profile.location %}
+          <div class="flex items-center mt-1 text-gray-600">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            {{ user.profile.location }}
+          </div>
+          {% endif %}
+        </div>
+        
+        <!-- Edit Button -->
+        <a href="{% url 'edit_profile' %}" class="text-blue-500 hover:text-blue-700 text-sm font-medium">
+          Edit Profile
+        </a>
+      </div>
+
+      <!-- Bio Section -->
+      <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+        <div class="flex justify-between items-center mb-2">
+          <div class="text-sm text-gray-500">About</div>
+          <button id="generate-bio-btn" onclick="openBioModal()" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors flex items-center gap-1">
+            <svg id="generate-icon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span id="generate-text">Generate Bio</span>
+            <svg id="loading-spinner" class="hidden h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="bio-content" class="whitespace-pre-line text-gray-800 min-h-8">
+          {% if user.profile.bio %}{{ user.profile.bio }}{% endif %}
+        </div>
+      </div>
+
+      <!-- Bio Generator Modal -->
+      <div id="bio-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center">
+        <div class="bg-white p-6 rounded-lg w-[90%] max-w-md shadow-lg">
+          <h2 class="text-lg font-semibold mb-4">Generate Your Bio</h2>
+          <div class="space-y-3">
+            <input type="text" id="bio-name" class="w-full p-2 border rounded" placeholder="Name">
+            <input type="text" id="bio-age" class="w-full p-2 border rounded" placeholder="Age">
+            <input type="text" id="bio-hobbies" class="w-full p-2 border rounded" placeholder="Hobbies">
+            <input type="text" id="bio-profession" class="w-full p-2 border rounded" placeholder="Profession">
+          </div>
+          <div class="mt-4 flex justify-end gap-2">
+            <button onclick="closeBioModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded">Cancel</button>
+            <button onclick="submitBioForm()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">Generate</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Info -->
+      <div class="space-y-6 border-t pt-6">
+        <div>
+          <div class="text-sm text-gray-500 mb-1">Username</div>
+          <div class="font-medium">{{ user.username }}</div>
+        </div>
+        <div>
+          <div class="text-sm text-gray-500 mb-1">Email</div>
+          <div class="font-medium">{{ user.email }}</div>
+        </div>
+      </div>
+
+      <!-- Logout -->
+      <form action="{% url 'logout' %}" method="post" class="mt-8">
+        {% csrf_token %}
+        <button type="submit" class="bg-red-500 text-white px-6 py-3 rounded-lg">Logout</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Status section -->
+  <div id="status-section" class="flex-1 h-full overflow-y-auto bg-white hidden">
+    <div class="p-6 max-w-4xl mx-auto">
+      <!-- My Status (WhatsApp-style) -->
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">My Status</h2>
+        <div class="flex gap-4 items-center">
+          {% if statuses %}
+            <!-- Show circular status with blue ring -->
+            <div class="text-center">
+              <button onclick="viewUserStatus('{{ user.username }}')" class="focus:outline-none">
+                <img src="{% if profile.profile_picture %}{{ profile.profile_picture.url }}{% else %}/static/default-avatar.png{% endif %}"
+                     class="w-20 h-20 rounded-full border-4 border-blue-500 object-cover transition-transform hover:scale-105" />
+                <div class="text-xs mt-1 text-gray-700">My Status</div>
+              </button>
+            </div>
+          {% else %}
+            <!-- No status: show add icon -->
+            <div class="text-center">
+              <form method="post" action="{% url 'upload_status' %}" enctype="multipart/form-data" class="inline-block">
+                {% csrf_token %}
+                <label for="upload-status" class="cursor-pointer relative inline-block">
+                  <img src="{% if profile.profile_picture %}{{ profile.profile_picture.url }}{% else %}/static/default-avatar.png{% endif %}"
+                       class="w-20 h-20 rounded-full border-4 border-gray-300 object-cover" />
+                  <span title="Upload new status" class="absolute bottom-0 right-0 bg-blue-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">+</span>
+                </label>
+                <input id="upload-status" type="file" name="image" accept="image/*" required class="hidden" onchange="this.form.submit()" />
+                <div class="text-xs mt-1 text-gray-700">Add Status</div>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Other Users' Status -->
+      <div class="mb-6">
+        <h2 class="text-lg font-semibold mb-3">Recent Status Updates</h2>
+        <div class="flex gap-4 overflow-x-auto">
+          {% for u in active_users_with_statuses %}
+            <div class="text-center">
+              <button onclick="viewUserStatus('{{ u.username }}')" class="focus:outline-none">
+                <img src="{% if u.profile.profile_picture %}{{ u.profile.profile_picture.url }}{% else %}/static/default-avatar.png{% endif %}"
+                     class="w-16 h-16 rounded-full border-4 border-green-500 object-cover transition-transform hover:scale-105" />
+                <div class="text-xs mt-1 text-gray-700">{{ u.username }}</div>
+              </button>
+            </div>
+          {% empty %}
+            <p class="text-sm text-gray-500">No statuses available to view.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Chat Modal -->
+  <div id="deleteChatModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white p-6 rounded shadow-lg w-full max-w-sm">
+      <h2 class="text-lg font-semibold mb-4">Delete this chat?</h2>
+      <div class="flex justify-end gap-3">
+        <button id="cancelDeleteChat" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
+        <button id="confirmDeleteChat" class="px-4 py-2 bg-red-500 text-white rounded">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification bar -->
+  <div id="in-app-notification" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 hidden bg-blue-600 text-white px-4 py-2 rounded shadow-lg cursor-pointer transition-opacity duration-300 max-w-xs text-sm">
+    <span id="notification-text"></span>
+  </div>
+
+  <script>
+    window.currentChatId = null;
+    window.currentUser = "{{ user.username|escapejs }}";
+
+    // --- Core Chat Functions ---
+    let chatSocket = null;
+    let isNearBottom = true;
+
+    function scrollChatToBottom() {
+      const chatMessages = document.getElementById('chat-messages');
+      setTimeout(() => {
+        chatMessages.scrollTo({
+          top: chatMessages.scrollHeight,
+          behavior: 'smooth'
+        });
+        isNearBottom = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 100;
+      }, 50);
+    }
+
+    window.selectChat = function(chatId, username) {
+      window.currentChatId = chatId;
+
+      document.getElementById('chat-header-username').textContent = username;
+      document.getElementById('chat-menu-wrapper').classList.remove('hidden');
+      document.getElementById('send-message-section').classList.remove('hidden');
+
+      const badge = document.querySelector(`#chat-li-${chatId} .message-badge`);
+      if (badge) {
+        badge.textContent = '';
+        badge.classList.add('hidden');
+      }
+
+      if (window.chatSocket) window.chatSocket.close();
+
+      const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      window.chatSocket = new WebSocket(`${wsScheme}://${window.location.host}/ws/chat/${chatId}/`);
+
+      window.chatSocket.onmessage = function (e) {
+        console.log('📩 Raw message:', e.data);
+        let data;
+        try {
+          data = JSON.parse(e.data);
+        } catch (err) {
+          console.error('❌ JSON parse failed:', e.data);
+          return;
+        }
+
+        if (data.type === 'chat') {
+          const isMe = data.username === window.currentUser;
+          const chatMessages = document.getElementById('chat-messages');
+
+          chatMessages.innerHTML += `
+            <div id="message-${data.message_id}" class="my-2 flex ${isMe ? 'justify-end' : 'justify-start'}">
+              <div class="relative inline-block ${isMe ? 'bg-green-100 text-green-800' : 'bg-white text-gray-800'} rounded-lg px-4 py-2 max-w-xs md:max-w-md break-words">
+                ${data.message}
+                <div class="text-right mt-1">
+                  <span class="text-xs ${isMe ? 'text-green-600' : 'text-gray-500'}">
+                    ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    ${isMe ? `
+                      <span class="seen-indicator ml-1 ${data.is_read ? 'text-blue-500' : 'hidden'}">
+                        ✓✓ Seen
+                      </span>
+                    ` : ''}
+                  </span>
+                </div>
+              </div>
+            </div>`;
+
+          scrollChatToBottom();
+
+          if (!isMe && isNearBottom) {
+            sendReadReceipts([data.message_id]);
+          }
+        }
+        else if (data.type === 'typing') {
+          const typingIndicator = document.getElementById('typing-indicator');
+          typingIndicator.textContent = `${data.username} is typing...`;
+          typingIndicator.classList.remove('hidden');
+          
+          clearTimeout(window.typingTimeout);
+          window.typingTimeout = setTimeout(() => {
+            typingIndicator.classList.add('hidden');
+          }, 3000);
+        }
+        else if (data.type === 'read_receipt') {
+          data.message_ids.forEach(msgId => {
+            const seenIndicator = document.querySelector(`#message-${msgId} .seen-indicator`);
+            if (seenIndicator) {
+              seenIndicator.classList.remove('hidden');
+              seenIndicator.classList.add('text-blue-500');
+            }
+          });
+        }
+      };
+
+      window.chatSocket.onclose = function (e) {
+        console.warn('WebSocket closed unexpectedly');
+      };
+
+      loadChatMessages(chatId);
+    };
+
+    function sendReadReceipts(specificIds = null) {
+      if (!window.chatSocket || window.chatSocket.readyState !== WebSocket.OPEN) return;
+      
+      let messageIds = specificIds;
+      
+      if (!specificIds) {
+        const messages = document.querySelectorAll('#chat-messages > div[id^="message-"]');
+        const unreadMessages = Array.from(messages)
+          .filter(msg => !msg.classList.contains('justify-end'))
+          .filter(msg => {
+            const seenEl = msg.querySelector('.seen-indicator');
+            return seenEl && seenEl.classList.contains('hidden');
+          });
+        
+        messageIds = unreadMessages.map(msg => parseInt(msg.id.split('-')[1]));
+      }
+
+      if (messageIds && messageIds.length > 0) {
+        window.chatSocket.send(JSON.stringify({
+          type: 'read',
+          message_ids: messageIds
+        }));
+      }
+    }
+
+    document.getElementById('chat-messages').addEventListener('scroll', function() {
+      const tolerance = 100;
+      isNearBottom = this.scrollTop + this.clientHeight >= this.scrollHeight - tolerance;
+      if (isNearBottom) {
+        sendReadReceipts();
+      }
+    });
+
+    function loadChatMessages(chatId) {
+      fetch(`/api/chat/chats/${chatId}/messages/`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch');
+          }
+          return response.json();
+        })
+        .then(data => {
+          const chatMessages = document.getElementById('chat-messages');
+          if (!chatMessages) return;
+
+          if (data.length === 0) {
+            chatMessages.innerHTML = '<div class="text-gray-400 text-center mt-8">No messages yet. Start the conversation!</div>';
+            return;
+          }
+
+          const currentUser = window.currentUser;
+          chatMessages.innerHTML = data.map(msg => {
+            const isMe = msg.sender && msg.sender.username === currentUser;
+            const isRead = msg.read_by && msg.read_by.some(user => user.username !== currentUser);
+
+            return `
+              <div id="message-${msg.id}" class="my-2 flex ${isMe ? 'justify-end' : 'justify-start'}">
+                <div class="relative inline-block ${isMe ? 'bg-green-100 text-green-800' : 'bg-white text-gray-800'} rounded-lg px-4 py-2 max-w-xs md:max-w-md break-words">
+                  ${msg.content}
+                  <div class="text-right mt-1">
+                    <span class="text-xs ${isMe ? 'text-green-600' : 'text-gray-500'}">
+                      ${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      ${isMe ? `
+                        <span class="seen-indicator ml-1 ${isRead ? 'text-blue-500' : 'hidden'}">
+                          ✓✓ Seen
+                        </span>
+                      ` : ''}
+                    </span>
+                  </div>
+                </div>
+              </div>`;
+          }).join('');
+
+          scrollChatToBottom();
+          setTimeout(sendReadReceipts, 300);
+        })
+        .catch(err => {
+          console.error('Message load error:', err);
+          document.getElementById('chat-messages').innerHTML = '<div class="text-red-500 text-center mt-8">Failed to load messages.</div>';
+        });
+    }
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    function createChat() {
+      const username = document.getElementById('new-chat-username').value.trim();
+      const errorSpan = document.getElementById('new-chat-error');
+      errorSpan.textContent = '';
+      if (!username) {
+        errorSpan.textContent = 'Please enter a username.';
+        return;
+      }
+      fetch(`/chat/create-chat/${encodeURIComponent(username)}/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': getCookie('csrftoken'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            errorSpan.textContent = data.error;
+          } else if (data.chat_id) {
+            window.location.reload();
+          } else {
+            errorSpan.textContent = 'Unknown error.';
+          }
+        })
+        .catch(() => {
+          errorSpan.textContent = 'Failed to create chat.';
+        });
+    }
+    window.createChat = createChat;
+
+    function sendMessage() {
+      const messageInput = document.getElementById('message-input');
+      const message = messageInput.value.trim();
+      if (message === '' || !window.chatSocket || window.chatSocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      window.chatSocket.send(JSON.stringify({
+        type: 'chat_message',
+        message: message
+      }));
+      messageInput.value = '';
+    }
+
+    function showNotification(message, isError = false) {
+      const notifBar = document.getElementById('in-app-notification');
+      const notifText = document.getElementById('notification-text');
+      
+      notifText.textContent = message;
+      notifBar.className = isError 
+        ? 'fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded shadow-lg cursor-pointer transition-opacity duration-300 max-w-xs text-sm'
+        : 'fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-blue-600 text-white px-4 py-2 rounded shadow-lg cursor-pointer transition-opacity duration-300 max-w-xs text-sm';
+      
+      notifBar.classList.remove('hidden');
+      
+      setTimeout(() => {
+        notifBar.classList.add('hidden');
+      }, 3000);
+    }
+
+    // --- Presence WebSocket Implementation ---
+    document.addEventListener('DOMContentLoaded', function() {
+      const user = "{{ user.username|escapejs }}";
+      const allUsernames = JSON.parse(
+        '[{% for u in other_users %}"{{ u.username|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}]'
+      );
+      const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+      let presenceSocket;
+      
+      function connectPresenceWebSocket() {
+        presenceSocket = new WebSocket(`${wsScheme}://${window.location.host}/ws/presence/`);
+        
+        presenceSocket.onmessage = function(e) {
+          const data = JSON.parse(e.data);
+          console.log('Presence data:', data);
+          
+          if (data.type === 'active_users') {
+            updateActiveUsers(data.users);
+          } else if (data.type === 'user_status') {
+            updateUserStatus(data.username, data.status);
+          }
+        };
+        
+        presenceSocket.onopen = function() {
+          console.log('Presence WebSocket connected');
+          presenceSocket.send(JSON.stringify({
+            type: 'get_active_users'
+          }));
+        };
+        
+        presenceSocket.onclose = function(e) {
+          console.log('Presence WebSocket closed, reconnecting...', e.reason);
+          setTimeout(connectPresenceWebSocket, 3000);
+        };
+        
+        presenceSocket.onerror = function(err) {
+          console.error('Presence WebSocket error:', err);
+        };
+      }
+      
+      function updateActiveUsers(activeUsers) {
+        console.log('Updating active users:', activeUsers);
+        allUsernames.forEach(function(username) {
+          const isActive = activeUsers.includes(username);
+          updateUserStatus(username, isActive ? 'online' : 'offline');
+        });
+      }
+      
+      function updateUserStatus(username, status) {
+        const statusEl = document.getElementById(`user-status-${username}`);
+        if (!statusEl) {
+          console.warn(`Status element not found for user: ${username}`);
+          return;
+        }
+        
+        statusEl.classList.remove('bg-gray-400', 'bg-green-500');
+        statusEl.classList.add(status === 'online' ? 'bg-green-500' : 'bg-gray-400');
+      }
+      
+      // Initialize the connection
+      connectPresenceWebSocket();
+    });
+
+    // --- DOMContentLoaded Event Listener ---
+    document.addEventListener('DOMContentLoaded', function () {
+      const messageInput = document.getElementById('message-input');
+      const sendBtn = document.getElementById('send-btn');
+      const chatMenuWrapper = document.getElementById('chat-menu-wrapper');
+      const chatMenuBtn = document.getElementById('chat-menu-btn');
+      const chatMenuDropdown = document.getElementById('chat-menu-dropdown');
+      const deleteChatBtn = document.getElementById('delete-chat-btn');
+      const deleteChatModal = document.getElementById('deleteChatModal');
+      const cancelDeleteChat = document.getElementById('cancelDeleteChat');
+      const confirmDeleteChat = document.getElementById('confirmDeleteChat');
+      const notifBar = document.getElementById('in-app-notification');
+      console.log('🔍 DOM Ready. Sections:', {
+        chat: document.getElementById('chat-section'),
+        profile: document.getElementById('profile-section'),
+        status: document.getElementById('status-section'),
+      });
+
+
+      // Navigation buttons
+      document.querySelectorAll('.dashboard-nav-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const section = this.getAttribute('data-section');
+          
+          const newUrl = section === 'chat' ? window.location.pathname.split('?')[0] : `?section=${section}`;
+          window.history.pushState({}, '', newUrl);
+
+          // Hide all sections
+          document.getElementById('chat-section').classList.add('hidden');
+          document.getElementById('profile-section').classList.add('hidden');
+          document.getElementById('status-section').classList.add('hidden');
+          if (deleteChatModal) deleteChatModal.classList.add('hidden');
+
+          // Show selected section
+          if (section === 'chat') {
+            document.getElementById('chat-section').classList.remove('hidden');
+          } else if (section === 'profile') {
+            document.getElementById('profile-section').classList.remove('hidden');
+          } else if (section === 'status') {
+            document.getElementById('status-section').classList.remove('hidden');
+          }
+
+          // Highlight active nav button
+          document.querySelectorAll('.dashboard-nav-btn').forEach(b => b.classList.remove('bg-gray-100'));
+          this.classList.add('bg-gray-100');
+        });
+      });
+
+      // Initialize based on URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const section = urlParams.get('section');
+      if (section) {
+        const btn = document.querySelector(`.dashboard-nav-btn[data-section="${section}"]`);
+        if (btn) btn.click();
+      } else {
+        document.querySelector('.dashboard-nav-btn[data-section="chat"]').click();
+      }
+
+      // Initial UI Reset
+      document.getElementById('send-message-section').classList.add('hidden');
+      if (chatMenuWrapper) chatMenuWrapper.classList.add('hidden');
+      document.getElementById('typing-indicator')?.classList.add('hidden');
+
+      // Chat list item click handlers
+      document.querySelectorAll('[data-chat-id]').forEach(li => {
+        li.addEventListener('click', () => {
+          const id = li.getAttribute('data-chat-id');
+          const username = li.getAttribute('data-username');
+          window.selectChat(id, username);
+        });
+      });
+
+      // Send message handlers
+      sendBtn.onclick = sendMessage;
+      messageInput.addEventListener('keydown', function (e) {
+        if (!window.currentChatId || !window.chatSocket) {
+          return;
+        }
+
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        } else if (
+          window.chatSocket &&
+          window.chatSocket.readyState === WebSocket.OPEN &&
+          messageInput.value.trim() !== ''
+        ) {
+          window.chatSocket.send(JSON.stringify({ type: 'typing' }));
+        }
+      });
+
+      // Chat menu dropdown toggle
+      if (chatMenuBtn && chatMenuDropdown) {
+        chatMenuBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          chatMenuDropdown.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', function (e) {
+          if (!chatMenuDropdown.contains(e.target) && !chatMenuBtn.contains(e.target)) {
+            chatMenuDropdown.classList.add('hidden');
+          }
+        });
+      }
+
+      // Delete chat modal
+      if (deleteChatBtn && deleteChatModal) {
+        deleteChatBtn.addEventListener('click', function () {
+          chatMenuDropdown?.classList.add('hidden');
+          deleteChatModal.classList.remove('hidden');
+        });
+      }
+
+      if (cancelDeleteChat && deleteChatModal) {
+        cancelDeleteChat.addEventListener('click', function (e) {
+          e.preventDefault();
+          deleteChatModal.classList.add('hidden');
+        });
+      }
+
+      if (confirmDeleteChat && deleteChatModal) {
+        confirmDeleteChat.addEventListener('click', async function (e) {
+          e.preventDefault();
+
+          if (!window.currentChatId) {
+            deleteChatModal.classList.add('hidden');
+            showNotification('No chat selected to delete', true);
+            return;
+          }
+
+          const originalText = confirmDeleteChat.textContent;
+          confirmDeleteChat.disabled = true;
+          confirmDeleteChat.textContent = 'Deleting...';
+
+          try {
+            const response = await fetch(`/chat/delete-chat/${window.currentChatId}/`, {
+              method: 'POST',
+              headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+              },
+            });
+
+            if (!response.ok) throw new Error('Failed to delete chat');
+            const data = await response.json();
+
+            const chatElement = document.getElementById(`chat-li-${window.currentChatId}`);
+            if (chatElement) {
+              chatElement.style.transition = 'opacity 0.3s';
+              chatElement.style.opacity = '0';
+              setTimeout(() => chatElement.remove(), 300);
+            }
+
+            document.getElementById('chat-header-username').textContent = '';
+            document.getElementById('chat-messages').innerHTML = '<div class="text-gray-400 text-center mt-8">Select a chat to start messaging.</div>';
+            document.getElementById('send-message-section').classList.add('hidden');
+            document.getElementById('chat-menu-wrapper').classList.add('hidden');
+
+            if (window.chatSocket) {
+              window.chatSocket.close();
+              window.chatSocket = null;
+            }
+
+            window.currentChatId = null;
+            showNotification('Chat deleted successfully');
+          } catch (error) {
+            console.error('Delete chat error:', error);
+            showNotification('Failed to delete chat. Please try again.', true);
+          } finally {
+            deleteChatModal.classList.add('hidden');
+            confirmDeleteChat.disabled = false;
+            confirmDeleteChat.textContent = originalText;
+          }
+        });
+      }
+
+      // Close modal when clicking outside
+      if (deleteChatModal) {
+        deleteChatModal.addEventListener('click', function (e) {
+          if (e.target === deleteChatModal) {
+            deleteChatModal.classList.add('hidden');
+          }
+        });
+      }
+
+      // Notification handler
+      notifBar?.addEventListener('click', function () {
+        notifBar.classList.add('hidden');
+      });
+
+      // Handle back/forward navigation
+      window.addEventListener('popstate', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const section = urlParams.get('section');
+        if (section) {
+          const btn = document.querySelector(`.dashboard-nav-btn[data-section="${section}"]`);
+          if (btn) btn.click();
+        } else {
+          document.querySelector('.dashboard-nav-btn[data-section="chat"]').click();
+        }
+      });
+    });
+
+    // Bio Modal Functions
+    function openBioModal() {
+      document.getElementById('bio-modal').classList.remove('hidden');
+    }
+    
+    function closeBioModal() {
+      document.getElementById('bio-modal').classList.add('hidden');
+    }
+    
+    async function submitBioForm() {
+      const name = document.getElementById('bio-name').value;
+      const age = document.getElementById('bio-age').value;
+      const hobbies = document.getElementById('bio-hobbies').value;
+      const profession = document.getElementById('bio-profession').value;
+
+      try {
+        const res = await fetch("{% url 'generate_bio' %}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCookie("csrftoken"),
+          },
+          body: JSON.stringify({ name, age, hobbies, profession })
+        });
+
+        const result = await res.json();
+        if (result.bio) {
+          document.getElementById('bio-content').textContent = result.bio;
+          closeBioModal();
+        } else {
+          alert("Failed to generate bio");
+        }
+      } catch (err) {
+        console.error("Bio error:", err);
+        alert("Error generating bio.");
+      }
+    }
+
+    // Status Viewing Functions
+    function viewUserStatus(username) {
+      // Close existing modal first
+      closeStatusModal();
+      
+      fetch(`/user-status/${username}/`)
+        .then(response => {
+          if (!response.ok) throw new Error('Failed to load status');
+          return response.text();
+        })
+        .then(html => {
+          const modal = document.createElement('div');
+          modal.id = 'statusModal';
+          modal.innerHTML = html;
+          document.body.appendChild(modal);
+          // Focus the modal for accessibility
+          modal.querySelector('[data-close]')?.focus();
+        })
+        .catch(err => {
+          console.error('Status load error:', err);
+          showNotification('Failed to load status', true);
+        });
+    }
+
+    function closeStatusModal() {
+      const modal = document.getElementById('statusModal');
+      if (modal) modal.remove();
+    }
+  </script>
+</div>
+
+{% endblock content %}

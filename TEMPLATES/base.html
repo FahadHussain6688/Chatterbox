@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}My Chat App{% endblock %}</title>
+
+    <!-- ✅ Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Additional style to ensure hidden navbar remains functional */
+        .invisible-nav {
+            opacity: 0;
+            height: 1px;
+            overflow: hidden;
+        }
+        .invisible-nav button {
+            position: fixed;
+            bottom: 0;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: all;
+        }
+        .invisible-nav button[data-section="profile"] { left: 25%; }
+        .invisible-nav button[data-section="status"] { left: 50%; transform: translateX(-50%); }
+        .invisible-nav button[data-section="active-users"] { right: 25%; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans">
+    <script>
+      document.cookie = "csrftoken={{ csrf_token }}";
+    </script>
+    <div id="main-content" class="pb-32">
+        {% block content %}
+        {% endblock %}
+    </div>
+    <!-- Modal backdrop for expanded section -->
+    <div id="dashboard-backdrop" class="hidden fixed inset-0 bg-black bg-opacity-30 z-40 transition-opacity"></div>
+    <!-- Fixed bottom expandable section container -->
+    <div id="dashboard-section-container" class="fixed bottom-16 left-0 w-full flex justify-center z-50 pointer-events-none">
+        <!-- Section content will be injected here -->
+    </div>
+    <nav class="invisible-nav fixed bottom-0 left-0 w-full z-50">
+        <button class="dashboard-nav-btn" data-section="profile">Profile</button>
+        <button class="dashboard-nav-btn" data-section="status">Status</button>
+        <button class="dashboard-nav-btn" data-section="active-users">Active Users</button>
+    </nav>
+    <script>
+    // Bottom navbar section toggling logic with modal overlay and close on outside click
+    document.addEventListener('DOMContentLoaded', function() {
+      const navBtns = document.querySelectorAll('.dashboard-nav-btn');
+      const sectionContainer = document.getElementById('dashboard-section-container');
+      const backdrop = document.getElementById('dashboard-backdrop');
+      let currentSection = null;
+      let currentBtn = null;
+      function closeSection() {
+        sectionContainer.innerHTML = '';
+        backdrop.classList.add('hidden');
+        sectionContainer.classList.add('pointer-events-none');
+        navBtns.forEach(b => b.classList.remove('border-t-4', 'border-blue-500', 'border-green-500', 'border-purple-500', 'border-pink-500'));
+        currentSection = null;
+        currentBtn = null;
+      }
+      navBtns.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const section = btn.getAttribute('data-section');
+          if (currentSection === section) {
+            closeSection();
+            return;
+          }
+          if (window.renderDashboardSection) {
+            window.renderDashboardSection(section, sectionContainer, btn);
+            backdrop.classList.remove('hidden');
+            sectionContainer.classList.remove('pointer-events-none');
+            currentSection = section;
+            currentBtn = btn;
+          }
+        });
+      });
+      backdrop.addEventListener('click', closeSection);
+      // Optional: ESC key closes section
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && currentSection) {
+          closeSection();
+        }
+      });
+      // Expose closeSection globally if needed
+      window.closeDashboardSection = closeSection;
+    });
+    </script>
+</body>
+</html>

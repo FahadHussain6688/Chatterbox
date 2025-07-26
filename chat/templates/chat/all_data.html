@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>All Chats</h2>
+<ul>
+  {% for chat in user_chats %}
+    <li>
+      <strong>Chat ID:</strong> {{ chat.id }}<br>
+      <strong>Participants:</strong>
+      {% for user in chat.participants.all %}{{ user.username }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      <ul>
+        <li><strong>Messages:</strong></li>
+        <ul>
+          {% for msg in chat_messages|get_item:chat.id %}
+            <li><b>{{ msg.sender.username }}:</b> {{ msg.content }} <small>({{ msg.timestamp }})</small></li>
+          {% empty %}
+            <li>No messages.</li>
+          {% endfor %}
+        </ul>
+      </ul>
+    </li>
+  {% empty %}
+    <li>No chats found.</li>
+  {% endfor %}
+</ul>
+
+<h2>All Statuses</h2>
+<ul>
+  {% for status in statuses %}
+    <li>
+      <b>{{ status.user.username }}</b>: <img src="{{ status.image.url }}" width="100" /> <small>({{ status.timestamp }})</small>
+    </li>
+  {% empty %}
+    <li>No statuses found.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

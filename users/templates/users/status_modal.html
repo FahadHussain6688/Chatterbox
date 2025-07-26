@@ -1,0 +1,54 @@
+<div id="statusModal" class="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center">
+  <div class="relative w-full max-w-md mx-auto rounded-lg overflow-hidden bg-white">
+    {% for status in statuses %}
+      <div class="status-slide p-4 text-center">
+        <img src="{{ status.image.url }}" class="mx-auto max-h-[80vh] object-contain rounded-md" />
+        <p class="text-sm text-gray-400 mt-2">{{ username }} - {{ status.timestamp|timesince }} ago</p>
+
+        {% if request.user.username == username %}
+          <form method="post" action="{% url 'delete_status' status.id %}" onsubmit="return confirm('Delete this status?');" class="mt-2">
+            {% csrf_token %}
+            <button type="submit" class="text-red-600 hover:underline text-sm bg-white border border-red-600 px-3 py-1 rounded">
+              Delete
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <!-- Controls -->
+    <button onclick="closeStatusModal()" class="absolute top-2 right-2 text-white bg-black bg-opacity-50 px-2 py-1 rounded">✕</button>
+    <button onclick="prevStatus()" class="absolute left-0 top-1/2 transform -translate-y-1/2 text-white px-4 text-2xl">‹</button>
+    <button onclick="nextStatus()" class="absolute right-0 top-1/2 transform -translate-y-1/2 text-white px-4 text-2xl">›</button>
+  </div>
+</div>
+
+<script>
+  let currentSlide = 0;
+  const slides = document.querySelectorAll('.status-slide');
+
+  function showSlide(index) {
+    slides.forEach((s, i) => s.style.display = i === index ? 'block' : 'none');
+  }
+
+  function nextStatus() {
+    if (currentSlide < slides.length - 1) {
+      currentSlide++;
+      showSlide(currentSlide);
+    }
+  }
+
+  function prevStatus() {
+    if (currentSlide > 0) {
+      currentSlide--;
+      showSlide(currentSlide);
+    }
+  }
+
+  function closeStatusModal() {
+    const modal = document.getElementById('statusModal');
+    if (modal) modal.remove();
+  }
+
+  showSlide(currentSlide);
+</script>

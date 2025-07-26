@@ -1,0 +1,17 @@
+<h2>Welcome, {{ user.username }}</h2>
+
+{% if status %}
+    <p><strong>Your Current Status:</strong></p>
+    <img src="{{ status.image.url }}" alt="Status" width="200" />
+{% else %}
+    <p>No active status. <a href="{% url 'upload_status' %}">Upload status</a></p>
+{% endif %}
+
+<h3>Your Chats:</h3>
+<ul>
+  {% for chat in chats %}
+    <li>Chat ID: {{ chat.chat_id }}</li>
+  {% empty %}
+    <li>No chats found.</li>
+  {% endfor %}
+</ul>

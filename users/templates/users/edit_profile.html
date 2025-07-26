@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="max-w-md mx-auto bg-white rounded-lg shadow-md overflow-hidden p-6 mt-10">
+    <h2 class="text-2xl font-bold text-gray-800 mb-6">Edit Profile</h2>
+    
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+        {% csrf_token %}
+        
+        <!-- Profile Picture -->
+        <div class="flex items-center space-x-4">
+            <div class="shrink-0">
+                <img id="avatar-preview" 
+                     src="{% if form.instance.profile_picture %}{{ form.instance.profile_picture.url }}{% else %}/static/default-avatar.png{% endif %}" 
+                     class="w-16 h-16 rounded-full object-cover border-2 border-gray-200">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Profile Picture
+                </label>
+                <input type="file" name="profile_picture" accept="image/*" 
+                       class="hidden" id="id_profile_picture" onchange="previewImage()">
+                <button type="button" onclick="document.getElementById('id_profile_picture').click()" 
+                        class="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded">
+                    Change Photo
+                </button>
+            </div>
+        </div>
+
+        <!-- Display Name -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Display Name
+            </label>
+            {{ form.display_name }}
+        </div>
+
+        <!-- Pronouns -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Pronouns
+            </label>
+            {{ form.pronouns }}
+        </div>
+
+        <!-- Location -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Location
+            </label>
+            {{ form.location }}
+        </div>
+
+        <!-- Bio -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+                Bio <span id="char-count" class="text-gray-400">0/250</span>
+            </label>
+            {{ form.bio }}
+        </div>
+
+        <!-- Form Actions -->
+        <div class="flex justify-end space-x-3 pt-4">
+            <a href="{% url 'profile_view' %}" 
+               class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                Save Changes
+            </button>
+        </div>
+    </form>
+</div>
+<div class="mb-4">
+  <label class="block text-sm text-gray-500 mb-1">Auto-generate Bio</label>
+  <div class="flex">
+    <button id="generate-bio-btn" 
+            class="bg-purple-500 text-white px-4 py-2 rounded-lg mr-2">
+      Generate Bio
+    </button>
+    <div id="bio-loading" class="hidden items-center">
+      <svg class="animate-spin h-5 w-5 text-purple-500" viewBox="0 0 24 24">
+        <!-- Loading spinner SVG -->
+      </svg>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('generate-bio-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('generate-bio-btn');
+    const loading = document.getElementById('bio-loading');
+    
+    btn.disabled = true;
+    loading.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/generate-bio/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: new URLSearchParams({
+                'age': document.getElementById('id_age').value,
+                'hobbies': document.getElementById('id_hobbies').value,
+                'profession': document.getElementById('id_profession').value
+            })
+        });
+        
+        const data = await response.json();
+        if (data.bio) {
+            document.getElementById('id_bio').value = data.bio;
+        }
+    } catch (error) {
+        console.error('Generation failed:', error);
+    } finally {
+        btn.disabled = false;
+        loading.classList.add('hidden');
+    }
+});
+</script>
+
+<script>
+    // Image preview functionality
+    function previewImage() {
+        const fileInput = document.getElementById('id_profile_picture');
+        const preview = document.getElementById('avatar-preview');
+        const file = fileInput.files[0];
+        
+        if (file) {
+            preview.src = URL.createObjectURL(file);
+        }
+    }
+
+    // Character counter for bio
+    document.addEventListener('DOMContentLoaded', function() {
+        const bioField = document.getElementById('id_bio');
+        const charCount = document.getElementById('char-count');
+        
+        if (bioField && charCount) {
+            // Initial count
+            charCount.textContent = `${bioField.value.length}/250`;
+            
+            // Update on typing
+            bioField.addEventListener('input', function() {
+                charCount.textContent = `${this.value.length}/250`;
+            });
+        }
+    });
+</script>
+
+{% endblock %}
